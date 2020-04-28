@@ -2,7 +2,10 @@
 Inverted Double Pendulum : SearchingHigh-Quality Policies to Control anUnstable Physical System
 
 LINKS: https://github.com/benelot/pybullet-gym
-      https://github.com/benelot/pybullet-gym/blob/master/pybulletgym/envs/roboschool/envs/pendulum/inverted_double_pendulum_env.py
+
+https://github.com/benelot/pybullet-gym/blob/master/pybulletgym/envs/roboschool/envs/pendulum/inverted_double_pendulum_env.py
+
+https://backyardrobotics.eu/2017/11/27/build-a-balancing-bot-with-openai-gym-pt-i-setting-up/
 
 ## Installing Pybullet-Gym
 
