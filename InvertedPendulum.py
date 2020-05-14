@@ -15,20 +15,17 @@ from tqdm import tqdm
 
 def BuildDataset(tuples):
     # building dataset
-    xtrain = np.zeros((len(tuples),14))
+    xtrain = np.zeros((len(tuples),10))
     ytrain = np.zeros(len(tuples))
     j = 0
     #generate intial training set
-    for prev_state,action,next_state,reward in tuples:
+    for prev_state,action,reward in tuples:
 
-        for i in range(6):
+        for i in range(9):
             xtrain[j][i] = prev_state[i]
 
 
-        xtrain[j][6] = action[0]
-
-        for i in range(6):
-            xtrain[j][i + 7] = next_state[i]
+        xtrain[j][9] = action[0]
 
         ytrain[j] = reward
 
@@ -38,27 +35,24 @@ def BuildDataset(tuples):
 
 def BuildQDataset(tuples, Qprev, actions, gamma):
     # building dataset
-    xtrain = np.zeros((len(tuples),14))
+    xtrain = np.zeros((len(tuples),10))
     ytrain = np.zeros(len(tuples))
 
     j = 0
     #generate intial training set
     for i in tqdm(range(len(tuples))):
 
-        prev_state,action,next_state,reward = tuples[i]
+        prev_state,action,reward = tuples[i]
 
-        for i in range(6):
+        for i in range(9):
             xtrain[j][i] = prev_state[i]
 
-        xtrain[j][6] = action[0]
-
-        for i in range(6):
-            xtrain[j][i + 7] = next_state[i]
+        xtrain[j][9] = action[0]
 
         max_rew, max_action = Max(Qprev, actions, xtrain[j])
-        xtrain[j][6] = max_action
+        xtrain[j][9] = max_action
 
-        ytrain[j] = reward + gamma*max_rew
+        ytrain[j] = ytrain[j] + gamma*max_rew
 
         j=j+1
 
@@ -73,7 +67,7 @@ def Max(Qprev, actions, xtrain):
 
     for action in actions:
 
-        xtrain[6] = action
+        xtrain[9] = action
         pred =  Qprev.predict([xtrain])
 
         if pred > best_rew:
@@ -85,14 +79,14 @@ def Max(Qprev, actions, xtrain):
 
 
 
-def GenerateActionSet():
-    return np.arange(-2, 2, 0.1).tolist()
+def GenerateActionSet(steps_actions):
+    return np.arange(-1, 1, steps_actions).tolist()
 
 
-def BuildFQI(N, tuples, gamma):
+def BuildFQI(N, tuples, gamma, N_trees, steps_actions):
     xtrain, ytrain =  BuildDataset(tuples)
-    actions =  GenerateActionSet()
-    Qprev  = ExtraTreesRegressor(n_estimators=10)
+    actions =  GenerateActionSet(steps_actions)
+    Qprev  = ExtraTreesRegressor(n_estimators=N_trees)
     Qprev = Qprev.fit(xtrain, ytrain)
     return FQI(N, tuples, Qprev, actions, gamma)
 
@@ -101,7 +95,7 @@ def FQI(N, tuples, Qprev, actions, gamma):
 
     #Fitted Q algorithm
     for i in range(N):
-        print("\n ITERATION " + str(i))
+        print("\n ITERATION " + str(i) + "/" + str(N-1))
         j = 0
 
         print("building new dataset")
@@ -124,25 +118,52 @@ def main():
   with open('100RandomDataset.pickle', 'rb') as handle:
     tuples = pickle.load(handle)
 
-  fqi =  BuildFQI(10, tuples, 0.1 )
+  N = 50
+  gamma = 0.95
+  N_trees = 100
+  steps_actions = 0.01
+  actions =  GenerateActionSet(steps_actions)
+  name = "FQImodel100_" + str(N) + "_" + str(gamma) + "_" + str(N_trees) + ".pickle"
 
-  while 1:
+
+  with open("FQImodel100_10_0.8.pickle", 'rb') as handle:
+    fqi = pickle.load(handle)
+
+  #fqi =  BuildFQI(N, tuples, gamma, N_trees, steps_actions)
+  # # save the model
+  # with open(name, 'wb') as handle:
+  #     pickle.dump(fqi, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+  sum_r = 0
+
+  for z in range(100):
     frame = 0
     score = 0
     restart_delay = 0
     obs = env.reset()
     r = 0
+    x = np.zeros((1,7))
 
     while 1:
       time.sleep(1. / 60.)
-      a = [-0.1]
-      print("STEP: "+str(a) + " OBS: " + str(obs) + " r: " + str(r) + "\n")
+
+      for i in range(9):
+          x[0][i] = obs[i]
+
+      x[0][9] = 0
+      rew, action = Max(fqi, actions, x[0])
+
+      a = [action]
+      #a = [0]
       obs, r, done, _ = env.step(a)
       score += r
       frame += 1
       still_open = env.render("human")
+      print("\n test")
+      print(still_open)
       if still_open == False:
         return
+      print("test2\n")
       if not done: continue
       if restart_delay == 0:
         print("score=%0.2f in %i frames" % (score, frame))
@@ -151,6 +172,11 @@ def main():
         restart_delay -= 1
         if restart_delay > 0: continue
         break
+
+    sum_r += r
+
+  sum_r/=100
+  print( "\n AVERAGE REWARD OF A GAME IS " + str(sum_r))
 
 if __name__ == "__main__":
   main()

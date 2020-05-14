@@ -24,6 +24,7 @@ def main():
 
     tuples = []
     nb_of_games = 100
+    avg_rew = 0
     for i in range(nb_of_games):
         print(i)
         frame = 0
@@ -33,11 +34,11 @@ def main():
 
         while 1:
             time.sleep(1. / 60.)
-            a =  [random.uniform(-2.0, 2.0)]
+            a =  [random.uniform(-1.0, 1.0)]
             prev_obs =  obs
-            # print("STEP: "+str(a))
+            #print("STEP: "+str(a))
             obs, r, done, _ = env.step(a)
-            tuples.append( (prev_obs, a, obs, r) )
+            tuples.append( (prev_obs, a, r, obs) )
             score += r
             frame += 1
             still_open = env.render("human")
@@ -46,13 +47,18 @@ def main():
             if not done: continue
             if restart_delay == 0:
                 print("score=%0.2f in %i frames" % (score, frame))
+                avg_rew += score
                 restart_delay = 60 * 2  # 2 sec at 60 fps
             else:
                 restart_delay -= 1
             if restart_delay > 0: continue
             break
 
-    with open('100RandomDataset.pickle', 'wb') as handle:
+
+    avg_rew = avg_rew/nb_of_games
+    print("AVG REW OF A RANDOM GAME : " + str(avg_rew))
+
+    with open('1000RandomDatasetFULL.pickle', 'wb') as handle:
         pickle.dump(tuples, handle, protocol=pickle.HIGHEST_PROTOCOL)
 if __name__ == "__main__":
   main()
