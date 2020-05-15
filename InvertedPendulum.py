@@ -118,21 +118,21 @@ def main():
   with open('100RandomDataset.pickle', 'rb') as handle:
     tuples = pickle.load(handle)
 
-  N = 50
-  gamma = 0.95
-  N_trees = 100
+  N = 20
+  gamma = 0.8
+  N_trees = 70
   steps_actions = 0.01
   actions =  GenerateActionSet(steps_actions)
   name = "FQImodel100_" + str(N) + "_" + str(gamma) + "_" + str(N_trees) + ".pickle"
 
 
-  with open("FQImodel100_10_0.8.pickle", 'rb') as handle:
-    fqi = pickle.load(handle)
+  # with open("FQImodel100_10_0.8.pickle", 'rb') as handle:
+  #   fqi = pickle.load(handle)
 
-  #fqi =  BuildFQI(N, tuples, gamma, N_trees, steps_actions)
-  # # save the model
-  # with open(name, 'wb') as handle:
-  #     pickle.dump(fqi, handle, protocol=pickle.HIGHEST_PROTOCOL)
+  fqi =  BuildFQI(N, tuples, gamma, N_trees, steps_actions)
+  # save the model
+  with open(name, 'wb') as handle:
+      pickle.dump(fqi, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
   sum_r = 0
 
@@ -159,11 +159,10 @@ def main():
       score += r
       frame += 1
       still_open = env.render("human")
-      print("\n test")
-      print(still_open)
+
       if still_open == False:
         return
-      print("test2\n")
+
       if not done: continue
       if restart_delay == 0:
         print("score=%0.2f in %i frames" % (score, frame))

@@ -11,6 +11,7 @@ import random
 import pybullet_envs
 import time
 import pickle
+import matplotlib.pyplot as plt
 from collections import namedtuple
 
 import torch
@@ -26,14 +27,15 @@ Transition = namedtuple('Transition',('state', 'action', 'next_state', 'reward')
 
 
 BATCH_SIZE = 128
-GAMMA = 0.999
+GAMMA = 0.85
 EPS_START = 0.9
 EPS_END = 0.05
 EPS_DECAY = 200
 TARGET_UPDATE = 10
 N = 50
-STEP_ACTIONS = 0.001
+STEP_ACTIONS = 0.1
 N_INPUTS =  9 # variables of a state
+N_GAMES = 500
 
 actions =  GenerateActionSet(STEP_ACTIONS)
 n_actions = len(actions)
@@ -67,6 +69,26 @@ class ReplayMemory():
         return len(self.memory)
 
 
+# remembers a given amount of scores from nb_of_games
+# can return the average score of all games scores in the memory
+# when full, the next scores erases the oldest score
+class ScoreMemory():
+
+    def __init__(self, capacity):
+        self.capacity = capacity
+        self.memory = []
+        self.position = 0
+
+    def push(self, score):
+        """Saves a score."""
+        if len(self.memory) < self.capacity:
+            self.memory.append(None)
+        self.memory[self.position] = score
+        self.position = (self.position + 1) % self.capacity
+
+    def average_score(self):
+        return sum(self.memory) / len(self.memory)
+
 # our deep Q learning network
 # 'inputs' is the amount of elements used as input
 # 'outputs' is the amount of elements used as outputs
@@ -74,14 +96,14 @@ class DQN(nn.Module):
 
     def __init__(self, inputs, outputs):
         super(DQN, self).__init__()
-        self.fc1 = nn.Linear(inputs, 20)
-        self.bn1 = nn.BatchNorm1d(20)
-        self.fc2 = nn.Linear(20, 60)
-        self.bn2 = nn.BatchNorm1d(60)
-        self.fc3 = nn.Linear(60, 200)
-        self.bn3 = nn.BatchNorm1d(200)
+        self.fc1 = nn.Linear(inputs, 128)
+        self.bn1 = nn.BatchNorm1d(128)
+        self.fc2 = nn.Linear(128, 256)
+        self.bn2 = nn.BatchNorm1d(256)
+        self.fc3 = nn.Linear(256, 64)
+        self.bn3 = nn.BatchNorm1d(64)
 
-        self.head = nn.Linear(200, outputs)
+        self.head = nn.Linear(64, outputs)
 
     # Called with either one element to determine next action, or a batch
     # during optimization. Returns tensor([[left0exp,right0exp]...]).
@@ -123,15 +145,18 @@ def optimize_model():
                                           batch.next_state)), device=device, dtype=torch.bool)
     non_final_next_states = torch.cat([torch.from_numpy(s) for s in batch.next_state
                                                 if s is not None])
+
+    # creating batches of states, actions and rewards
+    # TODO : étrange : batch.reward n'a pas la même représentation que batch.action, ce qui me force a faire tout
+    # un tas de manip : pourquoi ? Aussi, au final ils sont très légèrement différents, à surveiller
     state_batch = torch.cat(batch.state)
-    action_batch = torch.cat(batch.action)
+    action_batch = torch.cat(tuple([torch.from_numpy(np.array(a)).unsqueeze(0) for a in batch.action if a is not None]))
     reward_batch = torch.cat(batch.reward)
 
     # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
     # columns of actions taken. These are the actions which would've been taken
     # for each batch state according to policy_net
-
-    state_action_values = policy_net(state_batch.float()).gather(1, action_batch)
+    state_action_values = policy_net(state_batch.float()).gather(1, action_batch.long().view(-1,1) )
 
     # Compute V(s_{t+1}) for all next states.
     # Expected values of actions for non_final_next_states are computed based
@@ -139,13 +164,16 @@ def optimize_model():
     # This is merged based on the mask, such that we'll have either the expected
     # state value or 0 in case the state was final.
     next_state_values = torch.zeros(BATCH_SIZE, device=device)
+    non_final_next_states = non_final_next_states.view(-1,9)
     next_state_values[non_final_mask] = target_net(non_final_next_states.float()).max(1)[0].detach()
+
 
     # Compute the expected Q values
     expected_state_action_values = (next_state_values * GAMMA) + reward_batch
 
     # Compute Huber loss
     loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
+
 
     # Optimize the model
     optimizer.zero_grad()
@@ -159,11 +187,6 @@ def optimize_model():
 env = gym.make("InvertedDoublePendulumBulletEnv-v0")
 env.render(mode="human")
 
-with open('100RandomDataset.pickle', 'rb') as handle:
-    tuples = pickle.load(handle)
-
-sum_r = 0
-
 # policy and target networks
 policy_net = DQN(N_INPUTS, n_actions).to(device)
 target_net = DQN(N_INPUTS, n_actions).to(device)
@@ -175,8 +198,15 @@ policy_net.eval()
 optimizer = optim.RMSprop(policy_net.parameters())
 memory = ReplayMemory(10000)
 
+#scores measures
+score_mem = ScoreMemory(20)
+scores = []
+
 #playing games
-for z in range(100):
+for z in range(N_GAMES):
+
+    print("\n ITERATION " + str(z))
+
     frame = 0
     score = 0
     restart_delay = 0
@@ -184,28 +214,34 @@ for z in range(100):
     r = 0
     x = np.zeros((1,7))
 
+    if z%100 == 0:
+        plt.plot(scores)
+        plt.ylabel('average score on the 20 last games')
+        plt.xlabel('nb of games played')
+        plt.show()
+
     #playing one game
     while 1:
         time.sleep(1. / 60.)
-
-        # selecting the action
-        action =  [random.uniform(-1.0, 1.0)]
-        action = [action]
 
         # cast to tensor of appropriate dimension
         obs = torch.from_numpy(obs)
         obs = obs.unsqueeze(0)
 
         #select best action with epsilon greedy policy
-        action = select_action(obs.float())
+        action_i = select_action(obs.float())
+
+        #mapping the action chosen by the network by the corresponding action
+        action = actions[action_i]
 
         # applying the action
         prev_obs = obs
-        obs, r, done, _ = env.step(action)
+        obs, r, done, _ = env.step([action])
+
         r = torch.tensor([r], device=device)
 
-        # Store the transition in memory
-        memory.push((prev_obs, action, obs, r))
+        # Store the transition in memory (the action needs to be the indexed action here)
+        memory.push((prev_obs, action_i, obs, r))
 
         # Perform one step of the optimization (on the target network)
         optimize_model()
@@ -221,9 +257,12 @@ for z in range(100):
             break
 
         if not done: continue
+
         if restart_delay == 0:
             print("score=%0.2f in %i frames" % (score, frame))
-            restart_delay = 60 * 2  # 2 sec at 60 fps
+            # update scores measures
+            score_mem.push(float(score))
+            restart_delay = 6  # 2 sec at 60 fps
         else:
             restart_delay -= 1
         if restart_delay > 0: continue
@@ -233,7 +272,11 @@ for z in range(100):
     if z % TARGET_UPDATE == 0:
         target_net.load_state_dict(policy_net.state_dict())
 
-    sum_r += score
 
-sum_r/=100
-print( "\n AVERAGE REWARD OF A GAME IS " + str(sum_r))
+    print("Average score on the last 5 games : " + str(score_mem.average_score()))
+    scores.append(score_mem.average_score())
+
+plt.plot(scores)
+plt.ylabel('average score on the 20 last games')
+plt.xlabel('nb of games played')
+plt.show()
