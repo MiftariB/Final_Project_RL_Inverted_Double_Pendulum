@@ -139,7 +139,7 @@ env.render(mode="human")
 policy_net = DQN(N_INPUTS, n_actions).to(device)
 target_net = DQN(N_INPUTS, n_actions).to(device)
 target_net.load_state_dict(policy_net.state_dict())
-policy_net.load_state_dict(torch.load('500eps_402.8510711669922score.pt'))
+policy_net.load_state_dict(torch.load('1100eps_1036.2819580078126score.pt'))
 target_net.eval()
 policy_net.eval()
 
