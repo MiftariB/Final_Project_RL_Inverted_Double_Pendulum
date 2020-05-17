@@ -21,21 +21,23 @@ import torch.nn.functional as F
 import torchvision.transforms as T
 
 def GenerateActionSet(steps_actions):
-    return np.arange(-1, 1, steps_actions).tolist()
+    return np.arange(-0.5, 0.5, steps_actions).tolist()
 
 Transition = namedtuple('Transition',('state', 'action', 'next_state', 'reward'))
 
 
 BATCH_SIZE = 128
-GAMMA = 0.85
+GAMMA = 0.99
 EPS_START = 0.9
 EPS_END = 0.05
 EPS_DECAY = 200
-TARGET_UPDATE = 10
+TARGET_UPDATE = 20
 N = 50
-STEP_ACTIONS = 0.1
+STEP_ACTIONS = 0.05
 N_INPUTS =  9 # variables of a state
-N_GAMES = 500
+N_GAMES = 10000
+GAME_AV  = 20
+FREQ_IM = 100
 
 actions =  GenerateActionSet(STEP_ACTIONS)
 n_actions = len(actions)
@@ -96,14 +98,14 @@ class DQN(nn.Module):
 
     def __init__(self, inputs, outputs):
         super(DQN, self).__init__()
-        self.fc1 = nn.Linear(inputs, 128)
-        self.bn1 = nn.BatchNorm1d(128)
-        self.fc2 = nn.Linear(128, 256)
-        self.bn2 = nn.BatchNorm1d(256)
-        self.fc3 = nn.Linear(256, 64)
-        self.bn3 = nn.BatchNorm1d(64)
+        self.fc1 = nn.Linear(inputs, 256)
+        self.bn1 = nn.BatchNorm1d(256)
+        self.fc2 = nn.Linear(256, 1024)
+        self.bn2 = nn.BatchNorm1d(1024)
+        self.fc3 = nn.Linear(1024, 1024)
+        self.bn3 = nn.BatchNorm1d(1024)
 
-        self.head = nn.Linear(64, outputs)
+        self.head = nn.Linear(1024, outputs)
 
     # Called with either one element to determine next action, or a batch
     # during optimization. Returns tensor([[left0exp,right0exp]...]).
@@ -199,7 +201,7 @@ optimizer = optim.RMSprop(policy_net.parameters())
 memory = ReplayMemory(10000)
 
 #scores measures
-score_mem = ScoreMemory(20)
+score_mem = ScoreMemory(GAME_AV)
 scores = []
 
 #playing games
@@ -214,11 +216,15 @@ for z in range(N_GAMES):
     r = 0
     x = np.zeros((1,7))
 
-    if z%100 == 0:
+    if z%FREQ_IM == 0 and z != 0:
         plt.plot(scores)
         plt.ylabel('average score on the 20 last games')
         plt.xlabel('nb of games played')
         plt.show()
+
+        avg_score = score_mem.average_score()
+        model_name = str(z) + 'eps_' + str(avg_score) + 'score.pt'
+        torch.save(policy_net.state_dict(), model_name)
 
     #playing one game
     while 1:
@@ -238,7 +244,11 @@ for z in range(N_GAMES):
         prev_obs = obs
         obs, r, done, _ = env.step([action])
 
-        r = torch.tensor([r], device=device)
+        #TEST : TODO
+        if done:
+            r = torch.tensor([0.0], device=device)
+        else:
+            r = torch.tensor([r], device=device)
 
         # Store the transition in memory (the action needs to be the indexed action here)
         memory.push((prev_obs, action_i, obs, r))
@@ -273,7 +283,7 @@ for z in range(N_GAMES):
         target_net.load_state_dict(policy_net.state_dict())
 
 
-    print("Average score on the last 5 games : " + str(score_mem.average_score()))
+    print("Average score on the last 20 games : " + str(score_mem.average_score()))
     scores.append(score_mem.average_score())
 
 plt.plot(scores)

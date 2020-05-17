@@ -12,18 +12,12 @@ import random
 import pickle
 
 
-def relu(x):
-  return np.maximum(x, 0)
-
-
-
-
 def main():
     env = gym.make("InvertedDoublePendulumBulletEnv-v0")
     env.render(mode="human")
 
     tuples = []
-    nb_of_games = 100
+    nb_of_games = 1000
     avg_rew = 0
     for i in range(nb_of_games):
         print(i)
@@ -38,7 +32,7 @@ def main():
             prev_obs =  obs
             #print("STEP: "+str(a))
             obs, r, done, _ = env.step(a)
-            tuples.append( (prev_obs, a, r, obs) )
+            tuples.append( (prev_obs, a, r) )
             score += r
             frame += 1
             still_open = env.render("human")
@@ -48,7 +42,7 @@ def main():
             if restart_delay == 0:
                 print("score=%0.2f in %i frames" % (score, frame))
                 avg_rew += score
-                restart_delay = 60 * 2  # 2 sec at 60 fps
+                restart_delay =  2  # 2 sec at 60 fps
             else:
                 restart_delay -= 1
             if restart_delay > 0: continue
@@ -58,7 +52,7 @@ def main():
     avg_rew = avg_rew/nb_of_games
     print("AVG REW OF A RANDOM GAME : " + str(avg_rew))
 
-    with open('1000RandomDatasetFULL.pickle', 'wb') as handle:
+    with open(str(nb_of_games) + 'RandomDataset.pickle', 'wb') as handle:
         pickle.dump(tuples, handle, protocol=pickle.HIGHEST_PROTOCOL)
 if __name__ == "__main__":
   main()
